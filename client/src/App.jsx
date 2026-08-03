@@ -6,16 +6,19 @@ import API from "./API";
 import LoginContext from "./context/loginContext.js";
 import DefaultRoute from "./components/Default.jsx";
 import AdminRoute from "./components/Admin.jsx";
-
+import SetupForm from "./components/Setup.jsx"; 
 import Layout from "./components/Layout.jsx";
 import LoginForm from "./components/Login.jsx";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 function App() {
   const [users, setUsers] = useState(null);
   const [user, setUser] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [absences, setAbsences] = useState([]);
+  
+  const [isInitialized, setIsInitialized] = useState(true);
+  const [appLoading, setAppLoading] = useState(true);
 
   const loginSuccesful = (user) => {
     setUser(user);
@@ -35,18 +38,42 @@ function App() {
       .catch((err) => console.log(err));
   }, [dirty]);
 
-  //UseEffect for checking authN
   useEffect(() => {
-    const checkAuth = async () => {
+    const initApp = async () => {
       try {
-        const user = await API.getInfo();
-        setUser(user);
+        const status = await API.getSetupStatus();
+        setIsInitialized(status.initialized);
+
+        if (status.initialized) {
+          try {
+            const loggedUser = await API.getInfo();
+            setUser(loggedUser);
+          } catch (err) {
+            setUser(null);
+          }
+        }
       } catch (err) {
-        null;
+        console.error("Errore durante l'inizializzazione:", err);
+      } finally {
+        setAppLoading(false);
       }
     };
-    checkAuth();
+    initApp();
   }, []);
+
+  if (appLoading) {
+    return <div className="vh-100 d-flex justify-content-center align-items-center">Caricamento in corso...</div>;
+  }
+
+  if (!isInitialized) {
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="*" element={<SetupForm onSetupComplete={() => setIsInitialized(true)} />} />
+        </Routes>
+      </BrowserRouter>
+    );
+  }
 
   return (
     <>

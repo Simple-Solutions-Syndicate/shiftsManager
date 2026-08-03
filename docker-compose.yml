@@ -1,0 +1,24 @@
+services:
+  backend:
+    build: ./server
+    container_name: app_backend
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./server/data:/app/data
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - SESSION_KEY=la_tua_chiave_segreta_super_sicura
+      - ORIGIN1=http://localhost:8080
+      - ORIGIN2=http://localhost:5173
+    restart: unless-stopped
+
+  frontend:
+    build: ./client
+    container_name: app_frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

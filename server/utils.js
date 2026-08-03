@@ -2,8 +2,7 @@
 
 const dayjs = require('dayjs');
 
-//Select people for shifts
- function userSelection (users, shift, day, date, existingShift){
+function userSelection (users, shift, day, date, existingShift){
     users.sort((a, b) => a.score - b.score);
     function convertDate(isoDate) {
         const parts = isoDate.split('-');
@@ -17,51 +16,43 @@ const dayjs = require('dayjs');
             choosen.push(user);
         }
     }
+    
     choosen.forEach(user => {
-        if (shift === 3) {
-            user.score += 3;
-        } else if (shift === 2) {
-            user.score += 2;
-        } 
+        user.score += shift; 
     });
+    
     return choosen;
 }
 
-
-// shiftCreator, where magic happens!
-exports.createMonthlyShifts = (users, month, year) => {
-    const weekDays = {
-        domenica: 'Sunday',
-        lunedi: 'Monday',
-        mercoledi: 'Wednesday',
-        venerdi: 'Friday',
-    };
-
-    const weeklyShifts = {
-        [weekDays.domenica]: 3,
-        [weekDays.lunedi]: 2,
-        [weekDays.mercoledi]: 2,
-        [weekDays.venerdi]: 3,
-    };
+exports.createMonthlyShifts = (users, month, year, rules) => {
+    const weeklyShifts = {};
+    
+    if (rules && Array.isArray(rules)) {
+        rules.forEach(rule => {
+            weeklyShifts[rule.day_of_week] = rule.num_people;
+        });
+    }
 
     const monthlyShifts = [];
     const monthDays = dayjs(`${year}-${month}`).daysInMonth();
 
     for (let day = 1; day <= monthDays; day++) {
         const date = dayjs(`${year}-${month}-${day}`).format('YYYY-MM-DD');
-        const weekDay = dayjs(date).format('dddd');
-
-        if (weeklyShifts[weekDay]) {
-            const shift = weeklyShifts[weekDay];
-
-            // Get existing shifts for the day
+        const weekDayNumber = dayjs(date).day();
+        
+        let shiftCount = weeklyShifts[weekDayNumber];
+        
+        if (shiftCount === undefined) {
+            const alternativeKey = weekDayNumber === 0 ? 7 : weekDayNumber;
+            shiftCount = weeklyShifts[alternativeKey];
+        }
+        
+        if (shiftCount && shiftCount > 0) {
             const existingShifts = monthlyShifts.filter(shift => shift.date === date).map(shift => shift.shift).flat();
-            const dailyShifts = userSelection(users, shift, weekDay, date, existingShifts);
+            const dailyShifts = userSelection(users, shiftCount, weekDayNumber, date, existingShifts);
 
             monthlyShifts.push({ date, shift: dailyShifts.map(p => p.name) });
         }
     }
     return monthlyShifts;
-}
-
-
+};

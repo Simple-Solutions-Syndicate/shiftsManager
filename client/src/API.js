@@ -1,6 +1,6 @@
 "use strict";
 
-const SERVER_URL=import.meta.env.VITE_API_SERVER_URL;
+const SERVER_URL = import.meta.env.VITE_API_SERVER_URL;
 
 function getUsers() {
   return fetch(SERVER_URL + "users")
@@ -11,7 +11,6 @@ function getUsers() {
       throw error;
     });
 }
-
 
 function getAbsences() {
   return fetch(SERVER_URL + "absences")
@@ -61,46 +60,6 @@ function generateShifts(month, year) {
   });
 }
 
-function patchScore(id, score) {
-  return fetch(SERVER_URL + "score", {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ userId: id, score: score }),
-    credentials: "include",
-  }).then((res) => {
-    if (res.ok) {
-      return res.json();
-    } else {
-      return res.json().then((err) => {
-        throw err;
-      });
-    }
-  });
-}
-
-function addUser(name, role, password, score) {
-  return fetch(SERVER_URL + "user", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ name: name, role: role, password: password, score: score}),
-    credentials: "include",
-  }).then((res) => {
-    if (res.ok) {
-      return res.json();
-    } else {
-      return res.json().then((err) => {
-        throw err;
-      });
-    }
-  });
-}
-
-
-
 function login(username, password) {
   return fetch(SERVER_URL + "sessions", {
     method: "POST",
@@ -123,10 +82,9 @@ function login(username, password) {
       return user;
     })
     .catch((error) => {
-      throw error
+      throw error;
     });
 }
-
 
 function logout() {
   return fetch(SERVER_URL + "sessions/current", {
@@ -168,9 +126,146 @@ function getInfo() {
       return user;
     })
     .catch((error) => {
-      throw  error;
+      throw error;
     });
 }
 
-const API = { getUsers, insertAbsences, generateShifts, login, logout, getInfo, patchScore, addUser, getAbsences, SERVER_URL };
+function getSetupStatus() {
+  return fetch(SERVER_URL + "setup/status")
+    .then((res) => {
+      if (res.ok) {
+        return res.json();
+      } else {
+        return res.json().then((err) => {
+          throw err;
+        });
+      }
+    })
+    .catch((error) => {
+      throw error;
+    });
+}
+
+function setupAdmin(name, password) {
+  return fetch(SERVER_URL + "setup/admin", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name: name, password: password }),
+  }).then((res) => {
+    if (res.ok) {
+      return res.json();
+    } else {
+      return res.json().then((err) => {
+        throw err;
+      });
+    }
+  });
+}
+
+async function getShiftRules() {
+  const response = await fetch(`${SERVER_URL}rules`, { credentials: "include" });
+  if (response.ok) {
+    return await response.json();
+  } else {
+    throw await response.json();
+  }
+}
+
+async function updateShiftRules(rules) {
+  const response = await fetch(`${SERVER_URL}rules`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rules }),
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw await response.json();
+  }
+}
+
+async function addUser(name, role, password, score) {
+  const response = await fetch(`${SERVER_URL}users`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, role, password, score }),
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw await response.json();
+  }
+  return await response.json();
+}
+
+async function patchScore(userId, score) {
+  const response = await fetch(`${SERVER_URL}score`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, score }),
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw await response.json();
+  }
+  return await response.json();
+}
+
+async function deleteUser(userId) {
+  const response = await fetch(`${SERVER_URL}user/${userId}`, {
+    method: 'DELETE',
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw await response.json();
+  }
+  return await response.json();
+}
+
+const backupScores = async () => {
+  const response = await fetch(`${SERVER_URL}scores/backup`, {
+    method: "POST",
+    credentials: "include",
+  });
+  const data = await response.json();
+  if (response.ok) {
+    return data;
+  } else {
+    throw data;
+  }
+};
+
+const restoreScores = async () => {
+  const response = await fetch(`${SERVER_URL}scores/restore`, {
+    method: "POST",
+    credentials: "include",
+  });
+  const data = await response.json();
+  if (response.ok) {
+    return data;
+  } else {
+    throw data;
+  }
+};
+
+const API = {
+  getUsers,
+  insertAbsences,
+  generateShifts,
+  login,
+  logout,
+  getInfo,
+  patchScore,
+  addUser,
+  getAbsences,
+  getSetupStatus,
+  setupAdmin,
+  deleteUser,
+  getShiftRules,
+  updateShiftRules,
+  restoreScores,
+  backupScores,
+  SERVER_URL
+};
+
 export default API;

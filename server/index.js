@@ -12,22 +12,19 @@ const https = require("https");
 
 const dao = require("./dao");
 
-//AuthN
 const passport = require("passport");
 const LocalStrategy = require("passport-local");
 
-//Server
 const app = new express();
 const port = process.env.PORT || 3001;
 
-//Cors options
 const corsOptions = {
   origin: [process.env.ORIGIN1, process.env.ORIGIN2] || "http://localhost:5173",
   credentials: true,
 };
 
 const limiter = RateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
+  windowMs: 1 * 60 * 1000, 
   max: 20,
 });
 
@@ -60,7 +57,7 @@ const MemoryStore = require("memorystore")(session);
 
 app.use(
   session({
-    secret: process.env.SESSION_KEY,
+    secret: process.env.SESSION_KEY || "fallback_secret_key", 
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -69,7 +66,7 @@ app.use(
       secure: process.env.NODE_ENV === "production" ? true : false,
     },
     store: new MemoryStore({
-      checkPeriod: 86400000, // prune expired entries every 24h
+      checkPeriod: 86400000, 
     }),
   })
 );
@@ -84,22 +81,25 @@ const isLoggedIn = (req, res, next) => {
 };
 
 function generateMarkdownTable(jsonData) {
-  // Inizializza la stringa della tabella con l'intestazione
-  let markdown = "| Data       |    |    |    |\n";
-  markdown += "|------------|------------|------------|------------|\n";
+  let markdown = "| Data       | Turno Persone |\n";
+  markdown += "|------------|---------------|\n";
 
-  // Itera su ogni turno nel JSON
+  if (!jsonData || !Array.isArray(jsonData)) {
+    return markdown;
+  }
+
   jsonData.forEach((item) => {
-    const date = item.date; // Ottieni la data
-    const shift = item.shift; // Ottieni gli utenti del turno
-
-    // Gestisci il caso di meno di 3 utenti aggiungendo celle vuote
-    const user1 = shift[0] || "";
-    const user2 = shift[1] || "";
-    const user3 = shift[2] || "";
-
-    // Aggiungi una riga alla tabella Markdown
-    markdown += `| ${date} | ${user1} | ${user2} | ${user3} |\n`;
+    if (!item) return;
+    const date = item.date || ""; 
+    const shift = Array.isArray(item.shift) ? item.shift : []; 
+    
+    let row = `| ${date} `;
+    shift.forEach(userName => {
+      row += `| ${userName} `;
+    });
+    row += "|\n";
+    
+    markdown += row;
   });
 
   return markdown;
@@ -109,13 +109,52 @@ if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
 
-//APIs
+app.get("/api/setup/status", (req, res) => {
+  dao.hasUsers()
+    .then((initialized) => res.status(200).json({ initialized }))
+    .catch((err) => res.status(500).json(err));
+});
+
+app.post("/api/setup/admin", (req, res) => {
+  dao.hasUsers()
+    .then((isInitialized) => {
+      if (isInitialized) {
+        return res.status(403).json({ error: "Il sistema è già stato inizializzato." });
+      }
+
+      const { name, password } = req.body;
+      dao.addUser(name, "admin", password, 0)
+        .then((response) => res.status(200).json({ id: response, message: "Admin creato con successo" }))
+        .catch((err) => res.status(500).json(err));
+    })
+    .catch((err) => res.status(500).json(err));
+});
 
 app.post("/api/user", [isLoggedIn], (req, res) => {
   const { name, role, password, score } = req.body;
   dao
-    .addUser(name, role, password, score)
-    .then((response) => res.status(200).json(response))
+    .addUser(name, role || "user", password, score || 0)
+    .then((response) => res.status(200).json({ id: response, message: "Utente aggiunto con successo" }))
+    .catch((err) => res.status(500).json({ error: err.message || err }));
+});
+
+app.post("/api/users", [isLoggedIn], (req, res) => {
+  const { name, role, password, score } = req.body;
+  dao
+    .addUser(name, role || "user", password, score || 0)
+    .then((response) => res.status(200).json({ id: response, message: "Utente aggiunto con successo" }))
+    .catch((err) => res.status(500).json({ error: err.message || err }));
+});
+
+app.delete("/api/user/:id", [isLoggedIn], (req, res) => {
+  const userId = req.params.id;
+  dao.deleteUser(userId)
+    .then((changes) => {
+      if (changes === 0) {
+        return res.status(404).json({ error: "Utente non trovato" });
+      }
+      res.status(200).json({ message: "Utente eliminato con successo" });
+    })
     .catch((err) => res.status(500).json(err));
 });
 
@@ -138,25 +177,26 @@ app.patch("/api/score", [isLoggedIn], (req, res) => {
   const { userId, score } = req.body;
   dao
     .editScore(userId, score)
-    .then((response) => res.status(200).json(response))
+    .then((response) => res.status(200).json({ id: response, message: "Punteggio modificato con successo" }))
     .catch((err) => res.status(500).json(err));
 });
 
-app.get("/api/shifts", [isLoggedIn], (req, res) => {
+app.get("/api/shifts", [isLoggedIn], async (req, res) => {
   const { month, year } = req.query;
-  dao
-    .generateShifts(month, year)
-    .then((response) => {
-      res.setHeader(
-        "Content-Disposition",
-        'attachment; filename="generated.md"'
-      );
-      res.setHeader("Content-Type", "text/markdown");
-      res.status(200);
-      const markdown = generateMarkdownTable(response);
-      res.send(markdown);
-    })
-    .catch((err) => res.status(500).json(err));
+  try {
+    const response = await dao.generateShifts(month, year);
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="generated.md"'
+    );
+    res.setHeader("Content-Type", "text/markdown");
+    res.status(200);
+    const markdown = generateMarkdownTable(response);
+    res.send(markdown);
+  } catch (err) {
+    console.error("ERRORE CRITICO NELLA DAO SHIFTS:", err);
+    res.status(500).json({ error: err.message, stack: err.stack });
+  }
 });
 
 app.get("/api/users", (req, res) => {
@@ -189,6 +229,50 @@ app.delete("/api/sessions/current", (req, res) => {
   req.logout(() => {
     res.status(200).json({});
   });
+});
+
+app.get("/api/rules", (req, res) => {
+  dao.getShiftRules()
+    .then((rules) => res.status(200).json(rules))
+    .catch((err) => res.status(500).json(err));
+});
+
+app.put("/api/rules", async (req, res) => {
+  if (!req.isAuthenticated() || req.user.role !== 'admin') {
+    return res.status(401).json({ error: 'Not authorized' });
+  }
+  
+  try {
+    const rules = req.body.rules; 
+    await dao.updateShiftRules(rules);
+    res.status(200).json({ message: "Rules updated successfully" });
+  } catch (err) {
+    res.status(500).json(err);
+  }
+});
+
+app.post("/api/scores/backup", [isLoggedIn], async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(401).json({ error: 'Not authorized' });
+  }
+  try {
+    await dao.backupScores();
+    res.status(200).json({ message: "Backup dei punteggi eseguito con successo" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/scores/restore", [isLoggedIn], async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(401).json({ error: 'Not authorized' });
+  }
+  try {
+    await dao.restoreScores();
+    res.status(200).json({ message: "Ripristino dei punteggi completato con successo" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 if (process.env.MODE === "production") {
